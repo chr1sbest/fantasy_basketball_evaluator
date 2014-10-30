@@ -1,35 +1,14 @@
 from json import load
 from math import sqrt
+from copy import deepcopy
+from os import system
 
 class Evaluator(object):
-    def __init__(self):
+    def __init__(self, view_limit=45):
+        self.view_limit = view_limit
         self.load_categories()
         self.load_data()
         self.evaluate()
-
-    def load_data(self):
-        """
-        Load player_data and then calculate means and standard devations.
-        """
-        with open('player_data.json') as data:
-            self.player_data = load(data)
-        self.means, self.stds = {}, {}
-        for key in self.cats.keys() + ['RNK']:
-            self.means[key] = mean(*[x[key] for x in self.player_data])
-            self.stds[key] = stdev(*[x[key] for x in self.player_data])
-
-    def evaluate(self, cats=None):
-        cats = cats or self.cats
-        for player in self.player_data:
-            totals = {x: (player[x] - self.means[x]) / self.stds[x] * \
-                cats.get(x, 0) for x in player.keys() if x in cats}
-            player['SCORE'] = sum(totals.values())
-        self.player_data.sort(key=lambda x: x['SCORE'], reverse=True)
-
-    def punt(self, *args):
-        print "Punting {0}".format(args)
-        cats = {k: v for (k,v) in self.cats.iteritems() if k not in args}
-        self.evaluate(cats)
 
     def load_categories(self):
         """
@@ -42,22 +21,78 @@ class Evaluator(object):
         for cat in categories:
             while True:
                 value = raw_input("{0} value? ".format(cat))
-                if value in ['-2', '-1', '0', '1', '2']:
+                if value in ['-2', '-1', '0', '1', '2', '']:
                     break
                 print "Invalid Entry. Value must be in range of -2 to 2"
-            self.cats[cat] = int(value)
-        sure = raw_input("\n{0} \n\nCorrect? y/n\n".format(self.cats))
+            self.cats[cat] = 0 if value == "" else int(value)
+        points = {k:v for (k,v) in self.cats.iteritems() if v is not 0}
+        sure = raw_input("\n{0} \n\nCorrect? y/n\n".format(points))
         if sure in ['n', 'N', 'no', 'No']:
             self.load_categories()
 
-    def __str__(self):
-        return '\n'.join([\
-            "{0: <4} {1: <24} {2:.2f}".format(\
-            x['RNK'] - y + 1, x['NAME'], x['SCORE']) \
-            for y, x in enumerate(self.player_data)])
+    def load_data(self):
+        """
+        Load player_data and then calculate means and standard devations.
+        """
+        with open('player_data.json') as data:
+            self.player_data = load(data)
+        self.means, self.stds = {}, {}
+        for key in self.cats.keys() + ['RNK']:
+            self.means[key] = mean(*[x[key] for x in self.player_data])
+            self.stds[key] = stdev(*[x[key] for x in self.player_data])
 
-    def print(self, *args, sort_by='SCORE'):
-        # Print specific arguments
+    def evaluate(self, cats=None, player_data=None):
+        """
+        Evaluate player SCORE and DIFF.
+        Optionally can evaluate score with punted categories.
+        """
+        cats = cats or self.cats
+        player_data = player_data or self.player_data
+        for player in player_data:
+            totals = {x: (player[x] - self.means[x]) / self.stds[x] * \
+                cats.get(x, 0) for x in player.keys() if x in cats}
+            player['SCORE'] = sum(totals.values())
+        player_data.sort(key=lambda x: x['SCORE'], reverse=True)
+        for index, player in enumerate(player_data):
+            player['DIFF'] = player['RNK'] - index - 1
+            player['NEW'] = index + 1
+        self.display(player_data=player_data)
+
+    def display(self, player_data=None, *args):
+        """
+        Display columns titles and values for *args.
+        NEW  NAME             RNK  DIFF  SCORE
+        1    Kevin Durant*    22   21    23.220
+        """
+        player_data = player_data or self.player_data
+        args = args or ['RNK', 'DIFF', 'SCORE']
+        base = "{0: <3} {1: <24} "
+        for index, category in enumerate(args):
+            base += "{" + str(index + 2) + ": <4} "
+        columns = base.format('NEW', 'NAME', *args)
+        system('clear')
+        print columns
+        print '\n'.join([\
+            base.format(\
+            player['NEW'], player['NAME'], *[player[arg] for arg in args]) \
+            for player in player_data[:self.view_limit]])
+
+    def punt(self, *args):
+        """
+        Zero out categories for a copy of player_data and re-evaluate.
+        """
+        print "Punting {0}".format(args)
+        cats = {k: v for (k,v) in self.cats.iteritems() if k not in args}
+        player_data = deepcopy(self.player_data)
+        self.evaluate(cats=cats, player_data=player_data)
+
+    def sort(self, key, reverse=False):
+        """
+        Sort player data according to key and then display.
+        Reverse the reverse! Default displays descending now.
+        """
+        self.player_data.sort(key=lambda x: x[key], reverse=not reverse)
+        self.display()
 
 
 #Helper Functions
